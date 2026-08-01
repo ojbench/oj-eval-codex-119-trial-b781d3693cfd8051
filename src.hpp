@@ -48,13 +48,22 @@ class LinearScanRegisterAllocator {
 private:
     struct IntervalEndCmp {
         bool operator()(const LiveInterval* lhs, const LiveInterval* rhs) const {
-            return lhs->endpoint < rhs->endpoint;
+            if (lhs->endpoint != rhs->endpoint) {
+                return lhs->endpoint < rhs->endpoint;
+            }
+            return lhs < rhs;
         }
     };
 
     int regNum;
+    std::vector<Register> registerPool;
     std::vector<Register*> freeRegisters;
     std::set<LiveInterval*, IntervalEndCmp> active;
+
+    static StackSlot& stackSlot() {
+        static StackSlot instance;
+        return instance;
+    }
 
     void expireOldIntervals(LiveInterval& i) {
         while (!active.empty()) {
@@ -80,17 +89,19 @@ private:
         LiveInterval* spilled = *it;
         if (spilled->endpoint > i.endpoint) {
             i.location = spilled->location;
-            spilled->location = new StackSlot();
+            spilled->location = &stackSlot();
             active.erase(it);
             active.insert(&i);
         } else {
-            i.location = new StackSlot();
+            i.location = &stackSlot();
         }
     }
 public:
     LinearScanRegisterAllocator(int regNum) : regNum(regNum) {
+        registerPool.reserve(regNum);
         for (int regId = regNum - 1; regId >= 0; --regId) {
-            freeRegisters.push_back(new Register(regId));
+            registerPool.push_back(Register(regId));
+            freeRegisters.push_back(&registerPool.back());
         }
     }
     void linearScanRegisterAllocate(std::vector<LiveInterval>& intervalList) {
